@@ -5,6 +5,7 @@ from engine import DataEngine
 from exporters import DataExporter
 import uvicorn
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -12,6 +13,14 @@ app = FastAPI(
     title="LLM Data Generator API",
     description="Backend API for generating synthetic datasets using LLMs and other methods",
     version="0.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 data_engine = DataEngine()
