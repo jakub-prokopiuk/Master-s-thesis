@@ -31,13 +31,14 @@ with col1:
         
         params = {}
         dependencies = []
-
+        is_unique = False 
         if field_type == "faker":
             st.info("Generuje proste, losowe dane (szybkie).")
             faker_method = st.selectbox("Metoda Fakera", 
                                       ["name", "email", "address", "city", "country", 
                                        "uuid4", "job", "company", "phone_number", "ean"])
             params["method"] = faker_method
+            is_unique = st.checkbox("Wymuś unikalność", value=False)
             
         elif field_type == "distribution":
             st.info("Losuje wartości z podanej listy wg wag.")
@@ -54,6 +55,9 @@ with col1:
             available_fields = [f["name"] for f in st.session_state.schema_fields]
             dependencies = st.multiselect("Zależy od pól (kontekst)", available_fields)
             
+            is_unique = st.checkbox("Wymuś unikalność", value=False, 
+                                help="Jeśli zaznaczone, system będzie próbował wygenerować unikalne wartości (ważne dla ID, PESEL itp.)")
+            
             prompt = st.text_area("Szablon promptu", 
                                   value="Napisz krótki opis dla {nazwa_innego_pola}.",
                                   help="Użyj nawiasów klamrowych {} aby wstawić wartości z innych pól.")
@@ -66,7 +70,8 @@ with col1:
                     "name": field_name,
                     "type": field_type,
                     "params": params,
-                    "dependencies": dependencies
+                    "dependencies": dependencies,
+                    "is_unique": is_unique
                 }
                 st.session_state.schema_fields.append(new_field)
                 st.success(f"Dodano pole: {field_name}")

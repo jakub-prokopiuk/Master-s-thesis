@@ -94,6 +94,12 @@ class DataEngine:
 
     def generate(self, request: GeneratorRequest) -> List[Dict[str, Any]]:
         results = []
+        
+        unique_tracker: Dict[str, set] = {}
+
+        for field in request.schema_structure:
+            if field.is_unique:
+                unique_tracker[field.name] = set()
 
         for _ in range(request.config.rows_count):
             row_data = {}
@@ -102,17 +108,33 @@ class DataEngine:
                 row_data["global_context"] = request.config.global_context
 
             for field in request.schema_structure:
-                if field.type == "faker":
-                    row_data[field.name] = self._generate_faker_value(field.params)
+                max_retries = 10 
+                attempts = 0
+                value = None
                 
-                elif field.type == "llm":
-                    row_data[field.name] = self._generate_llm_value(field.params, row_data)
+                while attempts < max_retries:
+                    if field.type == "faker":
+                        value = self._generate_faker_value(field.params)
+                    elif field.type == "llm":
+                        value = self._generate_llm_value(field.params, row_data)
+                    elif field.type == "distribution":
+                        value = self._generate_distribution_value(field.params)
+                    else:
+                        value = None
+
+                    if field.is_unique:
+                        if value not in unique_tracker[field.name]:
+                            unique_tracker[field.name].add(value)
+                            break
+                        else:
+                            attempts += 1
+                    else:
+                        break
                 
-                elif field.type == "distribution":
-                    row_data[field.name] = self._generate_distribution_value(field.params)
-                
-                else:
-                    row_data[field.name] = None
+                if field.is_unique and attempts == max_retries:
+                    value = f"ERROR: Could not generate unique value for {field.name}"
+
+                row_data[field.name] = value
             
             if "global_context" in row_data:
                 del row_data["global_context"]

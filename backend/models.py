@@ -8,6 +8,7 @@ class FieldSchema(BaseModel):
     type: FieldType = Field(..., description="Type of generator: faker, llm or distribution")
     params: Dict[str, Any] = Field(default_factory=dict)
     dependencies: List[str] = Field(default_factory=list)
+    is_unique: bool = Field(False, description="Ensure values are unique across the dataset")
 
 class GeneratorConfig(BaseModel):
     job_name: str = "My Dataset"
