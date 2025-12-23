@@ -1,4 +1,4 @@
-import { Terminal, Download, AlertCircle, X, Database, CheckCircle2 } from 'lucide-react';
+import { Terminal, Download, AlertCircle, X, Database, CheckCircle2, Table as TableIcon } from 'lucide-react';
 import { colors } from '../theme';
 
 function OutputDisplay({ loading, error, generatedData, config, onDownload, setError }) {
@@ -19,7 +19,7 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload, setE
                 )}
             </div>
 
-            <div className="flex-1 overflow-auto rounded-md border border-[#30363d] bg-[#0d1117] relative">
+            <div className="flex-1 overflow-auto rounded-md border border-[#30363d] bg-[#0d1117] relative custom-scrollbar">
 
                 {error && (
                     <div className="absolute inset-0 bg-[#0d1117] z-20 p-6">
@@ -43,35 +43,43 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload, setE
                     </div>
                 )}
 
-                {generatedData && (
-                    <div className="h-full overflow-auto">
+                {generatedData && generatedData.data && (
+                    <div className="p-4 space-y-8">
                         {config.output_format === 'json' ? (
-                            <div className="min-w-full inline-block align-middle">
-                                <table className="min-w-full divide-y divide-[#30363d]">
-                                    <thead className="bg-[#161b22] sticky top-0 z-10">
-                                        <tr>
-                                            {generatedData.data.length > 0 && Object.keys(generatedData.data[0]).map(key => (
-                                                <th key={key} className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                                    {key}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-[#21262d] bg-[#0d1117]">
-                                        {generatedData.data.map((row, i) => (
-                                            <tr key={i} className="hover:bg-[#161b22]/50 transition-colors">
-                                                {Object.values(row).map((val, j) => (
-                                                    <td key={j} className="px-4 py-2.5 text-xs text-gray-300 font-mono whitespace-nowrap max-w-[200px] truncate" title={String(val)}>
-                                                        {String(val)}
-                                                    </td>
+                            Object.entries(generatedData.data).map(([tableName, rows]) => (
+                                <div key={tableName} className="mb-8">
+                                    <h3 className="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2 sticky left-0">
+                                        <TableIcon size={14} /> {tableName}
+                                        <span className="text-xs text-gray-600 font-normal">({rows.length} rows)</span>
+                                    </h3>
+                                    <div className="overflow-x-auto border border-[#30363d] rounded-md">
+                                        <table className="min-w-full divide-y divide-[#30363d]">
+                                            <thead className="bg-[#161b22]">
+                                                <tr>
+                                                    {rows.length > 0 && Object.keys(rows[0]).map(key => (
+                                                        <th key={key} className="px-4 py-2 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                                            {key}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-[#21262d] bg-[#0d1117]">
+                                                {rows.map((row, i) => (
+                                                    <tr key={i} className="hover:bg-[#161b22]/50 transition-colors">
+                                                        {Object.values(row).map((val, j) => (
+                                                            <td key={j} className="px-4 py-2 text-[10px] text-gray-300 font-mono whitespace-nowrap max-w-[200px] truncate" title={String(val)}>
+                                                                {String(val)}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
                                                 ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ))
                         ) : (
-                            <pre className="p-4 text-xs font-mono text-gray-300 leading-relaxed whitespace-pre-wrap">
+                            <pre className="text-xs font-mono text-gray-300 leading-relaxed whitespace-pre-wrap">
                                 {typeof generatedData === 'string' ? generatedData : JSON.stringify(generatedData, null, 2)}
                             </pre>
                         )}
@@ -82,7 +90,7 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload, setE
             {generatedData && (
                 <div className="mt-3 flex items-center gap-2 text-[10px] text-gray-500 font-mono">
                     <CheckCircle2 size={12} className="text-green-500" />
-                    Completed: {config.rows_count} rows generated in {config.output_format} format.
+                    Completed: {generatedData.tables_count} tables, {generatedData.total_rows} total rows generated.
                 </div>
             )}
         </div>

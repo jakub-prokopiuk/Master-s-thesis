@@ -9,7 +9,7 @@ function GlobalConfig({ config, setConfig, onExport, onImport }) {
         const file = e.target.files[0];
         if (!file) return;
         onImport(file);
-        e.target.value = null; // Reset input value to allow re-uploading same file
+        e.target.value = null;
     };
 
     return (
@@ -19,7 +19,6 @@ function GlobalConfig({ config, setConfig, onExport, onImport }) {
                     <Settings size={14} /> Global Configuration
                 </h2>
 
-                {/* Import/Export Actions */}
                 <div className="flex gap-2">
                     <input
                         type="file"
@@ -56,30 +55,19 @@ function GlobalConfig({ config, setConfig, onExport, onImport }) {
                     />
                 </div>
 
-                <div className="flex gap-4">
-                    <div className="flex-1">
-                        <label className={`block text-xs font-semibold ${colors.textMain} mb-1.5`}>Rows</label>
-                        <input
-                            type="number"
-                            value={config.rows_count}
-                            onChange={(e) => setConfig({ ...config, rows_count: parseInt(e.target.value) })}
-                            className={`w-full p-2.5 rounded-md ${colors.inputBg} border ${colors.border} focus:border-blue-500 outline-none text-sm text-white`}
-                        />
-                    </div>
-                    <div className="flex-1">
-                        <label className={`block text-xs font-semibold ${colors.textMain} mb-1.5`}>Format</label>
-                        <div className="relative">
-                            <select
-                                value={config.output_format}
-                                onChange={(e) => setConfig({ ...config, output_format: e.target.value })}
-                                className={`w-full p-2.5 rounded-md ${colors.inputBg} border ${colors.border} focus:border-blue-500 outline-none text-sm text-white appearance-none cursor-pointer`}
-                            >
-                                <option value="json">JSON</option>
-                                <option value="csv">CSV</option>
-                                <option value="sql">SQL</option>
-                            </select>
-                            <div className="absolute right-3 top-3 pointer-events-none text-gray-500">▼</div>
-                        </div>
+                <div>
+                    <label className={`block text-xs font-semibold ${colors.textMain} mb-1.5`}>Format</label>
+                    <div className="relative">
+                        <select
+                            value={config.output_format}
+                            onChange={(e) => setConfig({ ...config, output_format: e.target.value })}
+                            className={`w-full p-2.5 rounded-md ${colors.inputBg} border ${colors.border} focus:border-blue-500 outline-none text-sm text-white appearance-none cursor-pointer`}
+                        >
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV (ZIP)</option>
+                            <option value="sql">SQL</option>
+                        </select>
+                        <div className="absolute right-3 top-3 pointer-events-none text-gray-500">▼</div>
                     </div>
                 </div>
 

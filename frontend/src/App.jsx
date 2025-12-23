@@ -8,6 +8,7 @@ import SchemaBuilder from './components/SchemaBuilder';
 import FieldList from './components/FieldList';
 import OutputDisplay from './components/OutputDisplay';
 import HelpModal from './components/HelpModal';
+import TableManager from './components/TableManager';
 
 function App() {
   const [loading, setLoading] = useState(false);
@@ -16,17 +17,80 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
 
   const [config, setConfig] = useState({
-    job_name: "Your own dataset",
-    rows_count: 10,
-    global_context: "Dataset for testing person information generation.",
+    job_name: "E-commerce DB",
+    global_context: "Online store with users and orders.",
     output_format: "json"
   });
 
-  const [fields, setFields] = useState([]);
+  const [tables, setTables] = useState([
+    {
+      id: "t_users",
+      name: "users",
+      rows_count: 10,
+      fields: []
+    }
+  ]);
+  const [activeTableId, setActiveTableId] = useState("t_users");
   const [editingIndex, setEditingIndex] = useState(null);
 
+  const activeTable = tables.find(t => t.id === activeTableId) || tables[0];
+  const activeFields = activeTable.fields;
+
+  const generateId = () => Math.random().toString(36).substr(2, 9);
+
+  const addTable = () => {
+    const newId = `t_${generateId()}`;
+    const newTable = {
+      id: newId,
+      name: `table_${tables.length + 1}`,
+      rows_count: 10,
+      fields: [
+        { name: "id", type: "faker", is_unique: true, dependencies: [], params: { method: "uuid4" } }
+      ]
+    };
+    setTables([...tables, newTable]);
+    setActiveTableId(newId);
+  };
+
+  const removeTable = (id) => {
+    if (tables.length <= 1) return;
+    const newTables = tables.filter(t => t.id !== id);
+    setTables(newTables);
+    if (activeTableId === id) setActiveTableId(newTables[0].id);
+  };
+
+  const updateTable = (id, updates) => {
+    setTables(tables.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
+  const addField = (newField) => {
+    const updatedTable = { ...activeTable, fields: [...activeTable.fields, newField] };
+    updateTable(activeTableId, updatedTable);
+  };
+
+  const updateField = (updatedField) => {
+    const newFields = [...activeTable.fields];
+    newFields[editingIndex] = updatedField;
+    updateTable(activeTableId, { fields: newFields });
+    setEditingIndex(null);
+  };
+
+  const removeField = (index) => {
+    const newFields = [...activeTable.fields];
+    newFields.splice(index, 1);
+    updateTable(activeTableId, { fields: newFields });
+    if (editingIndex === index) setEditingIndex(null);
+  };
+
+  const startEditing = (index) => setEditingIndex(index);
+  const cancelEditing = () => setEditingIndex(null);
+
   const handleExportConfig = () => {
-    const projectData = { config, schema_structure: fields, version: "1.0" };
+    const projectData = {
+      config: config,
+      tables: tables,
+      version: "2.0"
+    };
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -41,12 +105,13 @@ function App() {
     reader.onload = (e) => {
       try {
         const importedData = JSON.parse(e.target.result);
-        if (importedData.config && Array.isArray(importedData.schema_structure)) {
+        if (importedData.config && Array.isArray(importedData.tables)) {
           setConfig(importedData.config);
-          setFields(importedData.schema_structure);
+          setTables(importedData.tables);
+          setActiveTableId(importedData.tables[0].id);
           setError(null);
         } else {
-          setError("Invalid schema file format.");
+          setError("Invalid v2 schema format. Missing 'tables'.");
         }
       } catch (err) {
         setError("Failed to parse JSON file: " + err.message);
@@ -55,32 +120,51 @@ function App() {
     reader.readAsText(file);
   };
 
-  const addField = (newField) => setFields([...fields, newField]);
-  const updateField = (updatedField) => {
-    const updatedFields = [...fields];
-    updatedFields[editingIndex] = updatedField;
-    setFields(updatedFields);
-    setEditingIndex(null);
-  };
-  const removeField = (index) => {
-    const newFields = [...fields];
-    newFields.splice(index, 1);
-    setFields(newFields);
-    if (editingIndex === index) setEditingIndex(null);
-  };
-  const startEditing = (index) => setEditingIndex(index);
-  const cancelEditing = () => setEditingIndex(null);
-
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
     setGeneratedData(null);
-    const payload = { config: config, schema_structure: fields };
+
+    const payload = {
+      config: config,
+      tables: tables.map(t => ({
+        id: t.id,
+        name: t.name,
+        rows_count: t.rows_count,
+        fields: t.fields
+      }))
+    };
+
     try {
-      const response = await axios.post('http://127.0.0.1:8000/generate', payload);
-      setGeneratedData(response.data);
+      if (config.output_format === 'json') {
+        const response = await axios.post('http://127.0.0.1:8000/generate', payload);
+        setGeneratedData(response.data);
+      } else {
+        const response = await axios.post('http://127.0.0.1:8000/generate', payload, {
+          responseType: 'blob'
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        const ext = config.output_format === 'csv' ? 'zip' : 'sql';
+        link.setAttribute('download', `${config.job_name}.${ext}`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setLoading(false);
+      }
     } catch (err) {
-      setError(err.message + (err.response ? ": " + JSON.stringify(err.response.data) : ""));
+      if (err.response && err.response.data instanceof Blob) {
+        const text = await err.response.data.text();
+        try {
+          const jsonError = JSON.parse(text);
+          setError(jsonError.detail || "Error generating file");
+        } catch (e) {
+          setError("Unknown error generating file");
+        }
+      } else {
+        setError(err.message + (err.response ? ": " + JSON.stringify(err.response.data) : ""));
+      }
     } finally {
       setLoading(false);
     }
@@ -88,11 +172,11 @@ function App() {
 
   const downloadFile = () => {
     if (!generatedData) return;
-    const blob = new Blob([typeof generatedData === 'object' ? JSON.stringify(generatedData.data, null, 2) : generatedData], { type: 'text/plain' });
+    const blob = new Blob([JSON.stringify(generatedData.data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${config.job_name}.${config.output_format}`;
+    a.download = `${config.job_name}.json`;
     a.click();
   };
 
@@ -110,10 +194,9 @@ function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-white">DataSynth<span className="text-blue-400">.ai</span></h1>
-              <p className={`text-xs ${colors.textMuted}`}>Synthetic Data Generator</p>
+              <p className={`text-xs ${colors.textMuted}`}>Relational Data Generator</p>
             </div>
           </div>
-
           <button
             onClick={() => setShowHelp(true)}
             className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition"
@@ -130,16 +213,27 @@ function App() {
           onImport={handleImportConfig}
         />
 
+        <TableManager
+          tables={tables}
+          activeTableId={activeTableId}
+          onAddTable={addTable}
+          onRemoveTable={removeTable}
+          onSelectTable={setActiveTableId}
+          onUpdateTable={updateTable}
+        />
+
         <SchemaBuilder
           onAddField={addField}
           onUpdateField={updateField}
           onCancelEdit={cancelEditing}
-          existingFields={fields}
-          fieldToEdit={editingIndex !== null ? fields[editingIndex] : null}
+          existingFields={activeFields}
+          fieldToEdit={editingIndex !== null ? activeFields[editingIndex] : null}
+          tables={tables}
+          activeTableId={activeTableId}
         />
 
         <FieldList
-          fields={fields}
+          fields={activeFields}
           onRemoveField={removeField}
           onEditField={startEditing}
           editingIndex={editingIndex}
@@ -147,8 +241,8 @@ function App() {
 
         <button
           onClick={handleGenerate}
-          disabled={loading || fields.length === 0}
-          className={`w-full py-2.5 rounded-md font-bold text-white shadow-lg flex justify-center items-center gap-2 transition-all border border-[rgba(240,246,252,0.1)] ${loading || fields.length === 0
+          disabled={loading || tables.length === 0}
+          className={`w-full py-2.5 rounded-md font-bold text-white shadow-lg flex justify-center items-center gap-2 transition-all border border-[rgba(240,246,252,0.1)] ${loading || tables.length === 0
             ? 'bg-[#21262d] text-gray-500 cursor-not-allowed border-none'
             : 'bg-[#1f6feb] hover:bg-[#388bfd]'
             }`}

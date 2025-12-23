@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Wand2, Plus, Save, XCircle, Thermometer, Sliders, AlertTriangle } from 'lucide-react';
+import { Wand2, Plus, Save, XCircle, Thermometer, Sliders, AlertTriangle, Link2 } from 'lucide-react';
 import { colors } from '../theme';
 
-function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields, fieldToEdit }) {
+function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields, fieldToEdit, tables, activeTableId }) {
     const [newField, setNewField] = useState({
         name: "",
         type: "faker",
@@ -17,11 +17,13 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
     const [llmTopP, setLlmTopP] = useState(1.0);
     const [llmFreqPenalty, setLlmFreqPenalty] = useState(0.0);
     const [llmPresPenalty, setLlmPresPenalty] = useState(0.0);
-
     const [showAdvanced, setShowAdvanced] = useState(false);
 
     const [distOptions, setDistOptions] = useState("BUG, FEATURE, DOCS");
     const [distWeights, setDistWeights] = useState("50, 30, 20");
+
+    const [fkTargetTable, setFkTargetTable] = useState("");
+    const [fkTargetColumn, setFkTargetColumn] = useState("");
 
     useEffect(() => {
         if (fieldToEdit) {
@@ -43,6 +45,9 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
             } else if (fieldToEdit.type === 'distribution') {
                 setDistOptions(fieldToEdit.params.options ? fieldToEdit.params.options.join(", ") : "");
                 setDistWeights(fieldToEdit.params.weights ? fieldToEdit.params.weights.join(", ") : "");
+            } else if (fieldToEdit.type === 'foreign_key') {
+                setFkTargetTable(fieldToEdit.params.table_id || "");
+                setFkTargetColumn(fieldToEdit.params.column_name || "");
             }
         } else {
             resetForm();
@@ -52,16 +57,16 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
     const resetForm = () => {
         setNewField({ name: "", type: "faker", is_unique: false, dependencies: [] });
         setFakerMethod("uuid4");
-
         setLlmPrompt("");
         setLlmTemperature(1.0);
         setLlmTopP(1.0);
         setLlmFreqPenalty(0.0);
         setLlmPresPenalty(0.0);
         setShowAdvanced(false);
-
         setDistOptions("BUG, FEATURE, DOCS");
         setDistWeights("50, 30, 20");
+        setFkTargetTable("");
+        setFkTargetColumn("");
     };
 
     const handleSubmit = () => {
@@ -84,6 +89,11 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                 options: distOptions.split(",").map(s => s.trim()),
                 weights: distWeights.split(",").map(s => parseFloat(s.trim()))
             };
+        } else if (newField.type === "foreign_key") {
+            finalParams = {
+                table_id: fkTargetTable,
+                column_name: fkTargetColumn
+            };
         }
 
         const fieldPayload = {
@@ -100,6 +110,9 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
     };
 
     const isDeterministicRisk = newField.type === 'llm' && llmTemperature < 0.5 && !newField.is_unique;
+
+    const targetTableObj = tables.find(t => t.id === fkTargetTable);
+    const targetColumns = targetTableObj ? targetTableObj.fields : [];
 
     return (
         <section className="flex-1">
@@ -131,6 +144,7 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                             <option value="faker">Faker</option>
                             <option value="llm">AI / LLM</option>
                             <option value="distribution">Distro</option>
+                            <option value="foreign_key">Relation (FK)</option>
                         </select>
                     </div>
                 </div>
@@ -191,7 +205,6 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                 />
                             </div>
 
-                            {/* Basic Param: Temperature */}
                             <div>
                                 <div className="flex justify-between items-center mb-1">
                                     <label className={`flex items-center gap-1 text-xs font-bold ${colors.textMuted}`}>
@@ -200,12 +213,8 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                     <span className="text-xs font-mono text-blue-400">{llmTemperature}</span>
                                 </div>
                                 <input
-                                    type="range"
-                                    min="0"
-                                    max="2"
-                                    step="0.1"
-                                    value={llmTemperature}
-                                    onChange={(e) => setLlmTemperature(e.target.value)}
+                                    type="range" min="0" max="2" step="0.1"
+                                    value={llmTemperature} onChange={(e) => setLlmTemperature(e.target.value)}
                                     className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                 />
                                 <div className="flex justify-between text-[10px] text-gray-500 mt-1">
@@ -215,17 +224,15 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                 </div>
                             </div>
 
-                            {/* Warning for Determinism */}
                             {isDeterministicRisk && (
                                 <div className="flex items-start gap-2 p-2 rounded bg-yellow-900/20 border border-yellow-700/50 text-yellow-500 text-[10px]">
                                     <AlertTriangle size={12} className="mt-0.5 shrink-0" />
                                     <div>
-                                        <span className="font-bold">Warning:</span> Low temperature without uniqueness may result in identical values for every row. Increase temperature or use "Unique Value".
+                                        <span className="font-bold">Warning:</span> Low temperature without uniqueness may result in identical values.
                                     </div>
                                 </div>
                             )}
 
-                            {/* Advanced Parameters Toggle */}
                             <div>
                                 <button
                                     onClick={() => setShowAdvanced(!showAdvanced)}
@@ -236,8 +243,6 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
 
                                 {showAdvanced && (
                                     <div className="mt-3 space-y-3 p-3 bg-black/20 rounded border border-[#30363d]">
-
-                                        {/* Top P */}
                                         <div>
                                             <div className="flex justify-between items-center mb-1">
                                                 <label className={`text-[10px] font-bold ${colors.textMuted}`}>Top P</label>
@@ -249,8 +254,6 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                                 className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-500"
                                             />
                                         </div>
-
-                                        {/* Frequency Penalty */}
                                         <div>
                                             <div className="flex justify-between items-center mb-1">
                                                 <label className={`text-[10px] font-bold ${colors.textMuted}`}>Freq. Penalty</label>
@@ -261,10 +264,7 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                                 value={llmFreqPenalty} onChange={(e) => setLlmFreqPenalty(e.target.value)}
                                                 className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-500"
                                             />
-                                            <p className="text-[9px] text-gray-500 mt-0.5">Penalizes frequent tokens. Increase to reduce repetition.</p>
                                         </div>
-
-                                        {/* Presence Penalty */}
                                         <div>
                                             <div className="flex justify-between items-center mb-1">
                                                 <label className={`text-[10px] font-bold ${colors.textMuted}`}>Pres. Penalty</label>
@@ -275,7 +275,6 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                                 value={llmPresPenalty} onChange={(e) => setLlmPresPenalty(e.target.value)}
                                                 className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-gray-500"
                                             />
-                                            <p className="text-[9px] text-gray-500 mt-0.5">Penalizes existing tokens. Good for forcing new topics.</p>
                                         </div>
                                     </div>
                                 )}
@@ -302,6 +301,51 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                                     onChange={e => setDistWeights(e.target.value)}
                                     className={`w-full p-2 rounded border ${colors.border} bg-[#0d1117] text-white text-sm`}
                                 />
+                            </div>
+                        </div>
+                    )}
+
+                    {newField.type === "foreign_key" && (
+                        <div className="space-y-3">
+                            <div className="flex items-start gap-2 p-2 rounded bg-blue-900/20 border border-blue-700/50 text-blue-300 text-[10px] mb-2">
+                                <Link2 size={12} className="mt-0.5 shrink-0" />
+                                <div>
+                                    <span className="font-bold">Relation:</span> Select a source table to pick random IDs/values from.
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={`block text-xs font-bold ${colors.textMuted} mb-1`}>Source Table</label>
+                                <select
+                                    value={fkTargetTable}
+                                    onChange={e => {
+                                        setFkTargetTable(e.target.value);
+                                        setFkTargetColumn("");
+                                    }}
+                                    className={`w-full p-2 rounded border ${colors.border} bg-[#0d1117] text-white text-sm`}
+                                >
+                                    <option value="">-- Select Table --</option>
+                                    {tables
+                                        .filter(t => t.id !== activeTableId)
+                                        .map(t => (
+                                            <option key={t.id} value={t.id}>{t.name} ({t.rows_count} rows)</option>
+                                        ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className={`block text-xs font-bold ${colors.textMuted} mb-1`}>Source Column</label>
+                                <select
+                                    value={fkTargetColumn}
+                                    onChange={e => setFkTargetColumn(e.target.value)}
+                                    disabled={!fkTargetTable}
+                                    className={`w-full p-2 rounded border ${colors.border} bg-[#0d1117] text-white text-sm disabled:opacity-50`}
+                                >
+                                    <option value="">-- Select Column --</option>
+                                    {targetColumns.map(col => (
+                                        <option key={col.name} value={col.name}>{col.name} ({col.type})</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     )}
