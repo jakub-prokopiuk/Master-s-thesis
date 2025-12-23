@@ -1,12 +1,49 @@
-import { Settings } from 'lucide-react';
+import { useRef } from 'react';
+import { Settings, Upload, Save } from 'lucide-react';
 import { colors } from '../theme';
 
-function GlobalConfig({ config, setConfig }) {
+function GlobalConfig({ config, setConfig, onExport, onImport }) {
+    const fileInputRef = useRef(null);
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        onImport(file);
+        e.target.value = null; // Reset input value to allow re-uploading same file
+    };
+
     return (
         <section className="mb-8 space-y-4 border-b border-[#30363d] pb-6">
-            <h2 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider flex items-center gap-2`}>
-                <Settings size={14} /> Global Configuration
-            </h2>
+            <div className="flex items-center justify-between">
+                <h2 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider flex items-center gap-2`}>
+                    <Settings size={14} /> Global Configuration
+                </h2>
+
+                {/* Import/Export Actions */}
+                <div className="flex gap-2">
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        className="hidden"
+                        accept=".json"
+                    />
+                    <button
+                        onClick={() => fileInputRef.current.click()}
+                        className="text-[10px] bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-2 py-1 rounded border border-[#30363d] flex items-center gap-1 transition"
+                        title="Import schema from JSON"
+                    >
+                        <Upload size={12} /> Import
+                    </button>
+                    <button
+                        onClick={onExport}
+                        className="text-[10px] bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-2 py-1 rounded border border-[#30363d] flex items-center gap-1 transition"
+                        title="Save schema to JSON"
+                    >
+                        <Save size={12} /> Save
+                    </button>
+                </div>
+            </div>
 
             <div className="space-y-4">
                 <div>
