@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Wand2, Plus, Save, XCircle, Thermometer, Sliders, AlertTriangle, Link2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Wand2, Plus, Save, XCircle, Thermometer, Sliders, AlertTriangle, Link2, Braces } from 'lucide-react';
 import { colors } from '../theme';
 
 function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields, fieldToEdit, tables, activeTableId }) {
@@ -24,6 +24,8 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
 
     const [fkTargetTable, setFkTargetTable] = useState("");
     const [fkTargetColumn, setFkTargetColumn] = useState("");
+
+    const textAreaRef = useRef(null);
 
     useEffect(() => {
         if (fieldToEdit) {
@@ -109,10 +111,55 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
         }
     };
 
+    const insertVariable = (variable) => {
+        const toInsert = `{${variable}}`;
+        if (textAreaRef.current) {
+            const startPos = textAreaRef.current.selectionStart;
+            const endPos = textAreaRef.current.selectionEnd;
+            const text = llmPrompt;
+            const newText = text.substring(0, startPos) + toInsert + text.substring(endPos);
+            setLlmPrompt(newText);
+
+            // Restore focus and cursor position after insert
+            setTimeout(() => {
+                textAreaRef.current.focus();
+                textAreaRef.current.setSelectionRange(startPos + toInsert.length, startPos + toInsert.length);
+            }, 0);
+        } else {
+            setLlmPrompt(prev => prev + toInsert);
+        }
+    };
+
     const isDeterministicRisk = newField.type === 'llm' && llmTemperature < 0.5 && !newField.is_unique;
 
     const targetTableObj = tables.find(t => t.id === fkTargetTable);
     const targetColumns = targetTableObj ? targetTableObj.fields : [];
+
+    // Helper to get all available variables including deep FK fields
+    const getAvailableVariables = () => {
+        const vars = [];
+        existingFields.filter(f => f.name !== newField.name).forEach(f => {
+            // 1. Add the field itself
+            vars.push({ name: f.name, type: 'local', desc: 'Current Table' });
+
+            // 2. If it's a Foreign Key, find the connected table and add its columns
+            if (f.type === 'foreign_key' && f.params && f.params.table_id) {
+                const connectedTable = tables.find(t => t.id === f.params.table_id);
+                if (connectedTable) {
+                    connectedTable.fields.forEach(remoteField => {
+                        vars.push({
+                            name: `${f.name}.${remoteField.name}`,
+                            type: 'remote',
+                            desc: `from ${connectedTable.name}`
+                        });
+                    });
+                }
+            }
+        });
+        return vars;
+    };
+
+    const availableVars = getAvailableVariables();
 
     return (
         <section className="flex-1">
@@ -196,16 +243,43 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                             </div>
 
                             <div>
-                                <label className={`block text-xs font-bold ${colors.textMuted} mb-1`}>Prompt Template</label>
+                                <div className="flex justify-between items-end mb-1">
+                                    <label className={`block text-xs font-bold ${colors.textMuted}`}>Prompt Template</label>
+                                </div>
                                 <textarea
+                                    ref={textAreaRef}
                                     value={llmPrompt}
                                     onChange={e => setLlmPrompt(e.target.value)}
-                                    placeholder="e.g. Generate a creative name for..."
-                                    className={`w-full p-2 rounded border ${colors.border} bg-[#0d1117] text-white text-sm h-20 font-mono text-xs focus:border-blue-500 outline-none`}
+                                    placeholder="e.g. Generate a creative name based on {gender}..."
+                                    className={`w-full p-2 rounded border ${colors.border} bg-[#0d1117] text-white text-sm h-24 font-mono text-xs focus:border-blue-500 outline-none`}
                                 />
+
+                                {availableVars.length > 0 && (
+                                    <div className="mt-2">
+                                        <label className="text-[10px] font-bold text-gray-500 flex items-center gap-1 mb-1.5">
+                                            <Braces size={10} /> Insert Variable:
+                                        </label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {availableVars.map((v, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => insertVariable(v.name)}
+                                                    className={`text-[10px] px-2 py-0.5 rounded border transition flex items-center gap-1.5 ${v.type === 'remote'
+                                                        ? 'bg-purple-900/20 border-purple-800 text-purple-300 hover:bg-purple-900/40'
+                                                        : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                                                        }`}
+                                                    title={`Insert {${v.name}} from ${v.desc}`}
+                                                >
+                                                    <span className="font-mono">{`{${v.name}}`}</span>
+                                                    {v.type === 'remote' && <Link2 size={8} className="opacity-50" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
-                            <div>
+                            <div className="pt-2">
                                 <div className="flex justify-between items-center mb-1">
                                     <label className={`flex items-center gap-1 text-xs font-bold ${colors.textMuted}`}>
                                         <Thermometer size={12} /> Temperature (Creativity)
@@ -310,7 +384,10 @@ function SchemaBuilder({ onAddField, onUpdateField, onCancelEdit, existingFields
                             <div className="flex items-start gap-2 p-2 rounded bg-blue-900/20 border border-blue-700/50 text-blue-300 text-[10px] mb-2">
                                 <Link2 size={12} className="mt-0.5 shrink-0" />
                                 <div>
-                                    <span className="font-bold">Relation:</span> Select a source table to pick random IDs/values from.
+                                    <span className="font-bold">Relation:</span> Select a source table.
+                                    <div className="mt-1 text-gray-400 font-normal">
+                                        Tip: When using this field in LLM prompts later, you can access parent columns like: <code className="bg-black/30 px-1 rounded text-orange-300">{`{${newField.name || 'field'}.column_name}`}</code>
+                                    </div>
                                 </div>
                             </div>
 

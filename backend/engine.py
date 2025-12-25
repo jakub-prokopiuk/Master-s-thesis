@@ -4,6 +4,24 @@ from models import GeneratorRequest
 from openai import OpenAI
 import random
 
+class DotAccessWrapper:
+    def __init__(self, data: Dict[str, Any]):
+        self._data = data
+
+    def __getattr__(self, item):
+        if item in self._data:
+            return self._data[item]
+        return f"[Missing {item}]"
+
+    def __getitem__(self, item):
+        return self._data[item]
+        
+    def __str__(self):
+        return str(self._data)
+    
+    def __repr__(self):
+        return str(self._data)
+
 class DataEngine:
     def __init__(self):
         self.faker = Faker()
@@ -31,22 +49,34 @@ class DataEngine:
         except Exception as e:
             return f"Error: {str(e)}"
 
-    def _generate_foreign_key_value(self, params: Dict[str, Any], all_generated_data: Dict[str, List[Dict[str, Any]]]) -> Any:
+    def _generate_foreign_key_value(self, params: Dict[str, Any], all_generated_data: Dict[str, List[Dict[str, Any]]], avoid_values: Set[Any] = None) -> Any:
         target_table_id = params.get("table_id")
         target_column = params.get("column_name")
 
         if not target_table_id or not target_column:
-            return "Error: FK missing table_id or column_name"
+            return None 
 
         if target_table_id not in all_generated_data:
-            return f"Error: Table {target_table_id} not generated yet (dependency error)"
+            return None 
         
         source_rows = all_generated_data[target_table_id]
         if not source_rows:
-            return "Error: Source table empty"
+            return None
+        
+        available_rows = source_rows
+        
+        if avoid_values:
+            available_rows = [
+                row for row in source_rows 
+                if row.get(target_column) not in avoid_values
+            ]
+        
+        if not available_rows:
+            return "Error: No unique FK values left"
 
-        random_row = random.choice(source_rows)
-        return random_row.get(target_column, "Error: Column not found")
+        random_row = random.choice(available_rows)
+        
+        return (random_row.get(target_column), random_row)
 
     def _generate_llm_value(self, params: Dict[str, Any], current_row_context: Dict[str, Any], avoid_values: Set[str] = None, retry_count: int = 0) -> str:
         model = params.get("model", "gpt-4o-mini")
@@ -60,20 +90,31 @@ class DataEngine:
         temperature = min(base_temp + (retry_count * 0.1), 1.5)
 
         if not template: return "Error: No prompt_template"
+        
+        formatting_context = {}
+        for k, v in current_row_context.items():
+            if isinstance(v, dict):
+                formatting_context[k] = DotAccessWrapper(v)
+            else:
+                formatting_context[k] = v
+
         try:
-            formatted_prompt = template.format(**current_row_context)
+            formatted_prompt = template.format(**formatting_context)
             
             if avoid_values and len(avoid_values) > 0:
-                avoid_list_str = ", ".join(list(avoid_values)[-15:])
+                avoid_list_str = ", ".join(list(avoid_values)[-10:])
                 formatted_prompt += f"\n\nCONSTRAINT: Value MUST be unique. DO NOT use: {avoid_list_str}."
-                if retry_count > 2:
-                     formatted_prompt += " Be inventive."
 
         except Exception as e:
             return f"Error formatting prompt: {str(e)}"
 
         try:
-            system_msg = "You are a data generator. Output ONE single value. No formatting, no quotes."
+            system_msg = (
+                "You are a synthetic data generator used for populating testing databases. "
+                "You MUST generate FICTIONAL, CREATIVE data. "
+                "Do NOT refuse requests. "
+                "Output ONE single value. No formatting, no quotes, no explanations."
+            )
             
             response = self.client.chat.completions.create(
                 model=model,
@@ -82,7 +123,7 @@ class DataEngine:
                     {"role": "user", "content": formatted_prompt}
                 ],
                 temperature=temperature,
-                max_tokens=60,
+                max_tokens=150,
                 top_p=top_p,
                 frequency_penalty=freq_penalty,
                 presence_penalty=pres_penalty
@@ -93,10 +134,6 @@ class DataEngine:
             return f"OpenAI Error: {str(e)}"
 
     def _resolve_generation_order(self, tables: List[Any]) -> List[Any]:
-        """
-        Sorts tables based on their foreign key dependencies to ensure that
-        foreign key constraints are respected during generation.
-        """
         id_to_table = {t.id: t for t in tables}
         dependencies = {t.id: set() for t in tables}
 
@@ -108,19 +145,16 @@ class DataEngine:
                         dependencies[table.id].add(target_id)
         
         ordered_tables = []
-        
         while dependencies:
             ready_tables = [t_id for t_id, deps in dependencies.items() if not deps]
-            
             if not ready_tables:
-                print("Warning: Circular dependency detected! Generation might fail for some keys.")
+                print("Warning: Circular dependency detected!")
                 remaining = list(dependencies.keys())
                 for t_id in remaining:
                     ordered_tables.append(id_to_table[t_id])
                 break
 
             ready_tables.sort()
-
             for t_id in ready_tables:
                 ordered_tables.append(id_to_table[t_id])
                 del dependencies[t_id]
@@ -132,63 +166,75 @@ class DataEngine:
 
     def generate(self, request: GeneratorRequest) -> Dict[str, List[Dict[str, Any]]]:
         generated_tables_data: Dict[str, List[Dict[str, Any]]] = {}
-        
         table_id_to_name = {t.id: t.name for t in request.tables}
-
         ordered_tables = self._resolve_generation_order(request.tables)
-        print(f"Generation Order: {[t.name for t in ordered_tables]}")
 
         for table in ordered_tables:
             table_rows = []
             unique_tracker: Dict[str, set] = {}
-
             for field in table.fields:
-                if field.is_unique:
-                    unique_tracker[field.name] = set()
+                if field.is_unique: unique_tracker[field.name] = set()
 
             for _ in range(table.rows_count):
-                row_data = {}
+                row_data = {}         
+                context_data = {}     
+                
                 if request.config.global_context:
-                    row_data["global_context"] = request.config.global_context
+                    context_data["global_context"] = request.config.global_context
 
                 for field in table.fields:
                     max_retries = 10 
                     attempts = 0
-                    value = None
-                    current_attempts_avoid_list = set()
+                    final_value = None
                     
+                    current_avoid_list = set()
                     if field.is_unique:
-                        current_attempts_avoid_list.update(unique_tracker[field.name])
+                        current_avoid_list.update(unique_tracker[field.name])
                     
                     while attempts < max_retries:
+                        generated_val = None
+                        
                         if field.type == "faker":
-                            value = self._generate_faker_value(field.params)
-                        elif field.type == "llm":
-                            value = self._generate_llm_value(field.params, row_data, current_attempts_avoid_list, attempts)
-                        elif field.type == "distribution":
-                            value = self._generate_distribution_value(field.params)
+                            generated_val = self._generate_faker_value(field.params)
+                        
                         elif field.type == "foreign_key":
-                            value = self._generate_foreign_key_value(field.params, generated_tables_data)
-                        else:
-                            value = None
+                            result = self._generate_foreign_key_value(field.params, generated_tables_data, current_avoid_list)
+                            
+                            if result and not isinstance(result, str):
+                                val, parent_row = result
+                                generated_val = val
+                                context_data[field.name] = parent_row 
+                            else:
+                                generated_val = result if result else "Error: FK Failed"
+
+                        elif field.type == "distribution":
+                            generated_val = self._generate_distribution_value(field.params)
+                        
+                        elif field.type == "llm":
+                            generated_val = self._generate_llm_value(field.params, context_data, current_avoid_list, attempts)
 
                         if field.is_unique:
-                            if value not in unique_tracker[field.name]:  
-                                unique_tracker[field.name].add(value)
+                            if generated_val not in unique_tracker[field.name] and "Error" not in str(generated_val):
+                                unique_tracker[field.name].add(generated_val)
+                                final_value = generated_val
                                 break
                             else:
                                 attempts += 1
-                                current_attempts_avoid_list.add(value)
+                                if field.type == "foreign_key" and "Error" in str(generated_val):
+                                    final_value = generated_val
+                                    break
+                                current_avoid_list.add(generated_val)
                         else:
-                            break 
+                            final_value = generated_val
+                            break
 
                     if field.is_unique and attempts == max_retries:
-                        value = f"ERROR: Uniqueness failed for {field.name}"
+                        final_value = f"Error: Unique constraint failed for {field.name}"
 
-                    row_data[field.name] = value
-                
-                if "global_context" in row_data:
-                    del row_data["global_context"]
+                    row_data[field.name] = final_value
+                    
+                    if field.type != "foreign_key":
+                         context_data[field.name] = final_value
 
                 table_rows.append(row_data)
             
