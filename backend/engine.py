@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Set
 from models import GeneratorRequest
 from openai import OpenAI
 import random
-import rstr 
+import rstr
 
 class DotAccessWrapper:
     def __init__(self, data: Dict[str, Any]):
@@ -17,55 +17,47 @@ class DotAccessWrapper:
 
 class DataEngine:
     def __init__(self):
-        self.faker = Faker()
+        self.default_faker = Faker()
         self.client = OpenAI() 
 
-    def _generate_regex_value(self, params: Dict[str, Any]) -> str:
-        pattern = params.get("pattern", r"[A-Z]{3}-\d{3}")
-        try:
-            return rstr.xeger(pattern)
-        except Exception as e:
-            return f"Error: Invalid Regex {str(e)}"
-
-    def _generate_timestamp_value(self, params: Dict[str, Any]) -> str:
-        start = params.get("min_date", "-1y") 
-        end = params.get("max_date", "now")
-        fmt = params.get("format", "%Y-%m-%d %H:%M:%S")
-        
-        try:
-            dt = self.faker.date_time_between(start_date=start, end_date=end)
-            
-            if fmt == "iso":
-                return dt.isoformat()
-            elif fmt == "timestamp":
-                return str(dt.timestamp())
-            else:
-                return dt.strftime(fmt)
-        except Exception as e:
-            return f"Error: Date gen failed {str(e)}"
-            
-    def _generate_integer_value(self, params: Dict[str, Any]) -> int:
-        min_val = params.get("min", 0)
-        max_val = params.get("max", 100)
-        try:
-            return random.randint(int(min_val), int(max_val))
-        except ValueError:
-            return 0
-
-    def _generate_boolean_value(self, params: Dict[str, Any]) -> bool:
-        probability = params.get("probability", 50)
-        return random.random() * 100 < probability
-
-    def _generate_faker_value(self, params: Dict[str, Any]) -> Any:
+    def _generate_faker_value(self, params: Dict[str, Any], faker_instance: Faker) -> Any:
         method_name = params.get("method")
         if not method_name: return None
-        if not hasattr(self.faker, method_name): return f"Error: Faker method '{method_name}' not found"
-        faker_method = getattr(self.faker, method_name)
+        if not hasattr(faker_instance, method_name): return f"Error: Faker method '{method_name}' not found"
+        faker_method = getattr(faker_instance, method_name)
         kwargs = params.get("kwargs", {})
         try:
             return faker_method(**kwargs)
         except Exception as e:
             return f"Error: {str(e)}"
+
+    def _generate_timestamp_value(self, params: Dict[str, Any], faker_instance: Faker) -> str:
+        start = params.get("min_date", "-1y") 
+        end = params.get("max_date", "now")
+        fmt = params.get("format", "%Y-%m-%d %H:%M:%S")
+        try:
+            dt = faker_instance.date_time_between(start_date=start, end_date=end)
+            if fmt == "iso": return dt.isoformat()
+            elif fmt == "timestamp": return str(dt.timestamp())
+            else: return dt.strftime(fmt)
+        except Exception as e:
+            return f"Error: Date gen failed {str(e)}"
+
+    
+    def _generate_regex_value(self, params: Dict[str, Any]) -> str:
+        pattern = params.get("pattern", r"[A-Z]{3}-\d{3}")
+        try: return rstr.xeger(pattern)
+        except Exception as e: return f"Error: Invalid Regex {str(e)}"
+
+    def _generate_integer_value(self, params: Dict[str, Any]) -> int:
+        min_val = params.get("min", 0)
+        max_val = params.get("max", 100)
+        try: return random.randint(int(min_val), int(max_val))
+        except ValueError: return 0
+
+    def _generate_boolean_value(self, params: Dict[str, Any]) -> bool:
+        probability = params.get("probability", 50)
+        return random.random() * 100 < probability
 
     def _generate_distribution_value(self, params: Dict[str, Any]) -> Any:
         options = params.get("options")
@@ -73,10 +65,8 @@ class DataEngine:
         if not options or not isinstance(options, list): return "Error: options required"
         if not weights: return random.choice(options)
         if len(options) != len(weights): return "Error: options/weights mismatch"
-        try:
-            return random.choices(options, weights=weights, k=1)[0]
-        except Exception as e:
-            return f"Error: {str(e)}"
+        try: return random.choices(options, weights=weights, k=1)[0]
+        except Exception as e: return f"Error: {str(e)}"
 
     def _generate_foreign_key_value(self, params: Dict[str, Any], all_generated_data: Dict[str, List[Dict[str, Any]]], avoid_values: Set[Any] = None) -> Any:
         target_table_id = params.get("table_id")
@@ -85,13 +75,10 @@ class DataEngine:
         if target_table_id not in all_generated_data: return None 
         source_rows = all_generated_data[target_table_id]
         if not source_rows: return None
-
         available_rows = source_rows
         if avoid_values:
             available_rows = [row for row in source_rows if row.get(target_column) not in avoid_values]
-        
         if not available_rows: return "Error: No unique FK values left"
-
         random_row = random.choice(available_rows)
         return (random_row.get(target_column), random_row)
 
@@ -103,22 +90,17 @@ class DataEngine:
         freq_penalty = params.get("frequency_penalty", 0.0)
         pres_penalty = params.get("presence_penalty", 0.0)
         temperature = min(base_temp + (retry_count * 0.1), 1.5)
-
         if not template: return "Error: No prompt_template"
-        
         formatting_context = {}
         for k, v in current_row_context.items():
             if isinstance(v, dict): formatting_context[k] = DotAccessWrapper(v)
             else: formatting_context[k] = v
-
         try:
             formatted_prompt = template.format(**formatting_context)
             if avoid_values and len(avoid_values) > 0:
                 avoid_list_str = ", ".join(list(avoid_values)[-10:])
                 formatted_prompt += f"\n\nCONSTRAINT: Value MUST be unique. DO NOT use: {avoid_list_str}."
-        except Exception as e:
-            return f"Error formatting prompt: {str(e)}"
-
+        except Exception as e: return f"Error formatting prompt: {str(e)}"
         try:
             system_msg = "You are a synthetic data generator. Generate FICTIONAL, CREATIVE data. Output ONE single value."
             response = self.client.chat.completions.create(
@@ -127,8 +109,7 @@ class DataEngine:
                 temperature=temperature, max_tokens=150, top_p=top_p, frequency_penalty=freq_penalty, presence_penalty=pres_penalty
             )
             return response.choices[0].message.content.strip().strip('"')
-        except Exception as e:
-            return f"OpenAI Error: {str(e)}"
+        except Exception as e: return f"OpenAI Error: {str(e)}"
 
     def _resolve_generation_order(self, tables: List[Any]) -> List[Any]:
         id_to_table = {t.id: t for t in tables}
@@ -139,7 +120,6 @@ class DataEngine:
                     target_id = field.params.get("table_id")
                     if target_id and target_id in id_to_table and target_id != table.id:
                         dependencies[table.id].add(target_id)
-        
         ordered_tables = []
         while dependencies:
             ready_tables = [t_id for t_id, deps in dependencies.items() if not deps]
@@ -160,6 +140,12 @@ class DataEngine:
         table_id_to_name = {t.id: t.name for t in request.tables}
         ordered_tables = self._resolve_generation_order(request.tables)
 
+        requested_locale = request.config.locale or "en_US"
+        try:
+            job_faker = Faker(requested_locale)
+        except Exception:
+            job_faker = Faker("en_US")
+
         for table in ordered_tables:
             table_rows = []
             unique_tracker: Dict[str, set] = {}
@@ -167,8 +153,8 @@ class DataEngine:
                 if field.is_unique: unique_tracker[field.name] = set()
 
             for _ in range(table.rows_count):
-                row_data = {}
-                context_data = {}
+                row_data = {}         
+                context_data = {}     
                 if request.config.global_context: context_data["global_context"] = request.config.global_context
 
                 for field in table.fields:
@@ -181,7 +167,11 @@ class DataEngine:
                     while attempts < max_retries:
                         generated_val = None
                         
-                        if field.type == "faker": generated_val = self._generate_faker_value(field.params)
+                        if field.type == "faker": 
+                            generated_val = self._generate_faker_value(field.params, job_faker)
+                        elif field.type == "timestamp":
+                            generated_val = self._generate_timestamp_value(field.params, job_faker)
+                        
                         elif field.type == "foreign_key":
                             result = self._generate_foreign_key_value(field.params, generated_tables_data, current_avoid_list)
                             if result and not isinstance(result, str):
@@ -193,7 +183,6 @@ class DataEngine:
                         elif field.type == "integer": generated_val = self._generate_integer_value(field.params)
                         elif field.type == "boolean": generated_val = self._generate_boolean_value(field.params)
                         elif field.type == "regex": generated_val = self._generate_regex_value(field.params)
-                        elif field.type == "timestamp": generated_val = self._generate_timestamp_value(field.params)
                         elif field.type == "llm": generated_val = self._generate_llm_value(field.params, context_data, current_avoid_list, attempts)
 
                         if field.is_unique:

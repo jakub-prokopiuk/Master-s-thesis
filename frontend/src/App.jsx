@@ -19,7 +19,8 @@ function App() {
   const [config, setConfig] = useState({
     job_name: "E-commerce DB",
     global_context: "Online store with users and orders.",
-    output_format: "json"
+    output_format: "json",
+    locale: "en_US"
   });
 
   const [tables, setTables] = useState([

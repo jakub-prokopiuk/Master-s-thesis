@@ -20,6 +20,7 @@ class GeneratorConfig(BaseModel):
     job_name: str = "My Database"
     global_context: Optional[str] = None
     output_format: Literal["json", "csv", "sql"] = "json"
+    locale: str = Field("en_US", description="Locale for Faker (e.g., pl_PL, en_US)")
 
 class GeneratorRequest(BaseModel):
     config: GeneratorConfig
