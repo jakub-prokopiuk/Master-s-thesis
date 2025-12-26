@@ -8,6 +8,7 @@ import SchemaBuilder from './components/schema/SchemaBuilder';
 import FieldList from './components/FieldList';
 import OutputDisplay from './components/OutputDisplay';
 import HelpModal from './components/HelpModal';
+import TemplateModal from './components/TemplateModal';
 import TableManager from './components/TableManager';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
   const [generatedData, setGeneratedData] = useState(null);
   const [error, setError] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false); // Stan modala szablonów
 
   const [config, setConfig] = useState({
     job_name: "E-commerce DB",
@@ -85,6 +87,17 @@ function App() {
 
   const startEditing = (index) => setEditingIndex(index);
   const cancelEditing = () => setEditingIndex(null);
+
+  const handleLoadTemplate = (template) => {
+    setConfig({ ...config, ...template.config });
+    setTables(template.tables);
+    if (template.tables.length > 0) {
+      setActiveTableId(template.tables[0].id);
+    }
+    setGeneratedData(null);
+    setError(null);
+    setShowTemplateModal(false);
+  };
 
   const handleExportConfig = () => {
     const projectData = {
@@ -186,6 +199,13 @@ function App() {
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
+      {showTemplateModal && (
+        <TemplateModal
+          onClose={() => setShowTemplateModal(false)}
+          onSelect={handleLoadTemplate}
+        />
+      )}
+
       <div className={`w-full md:w-5/12 lg:w-4/12 ${colors.bgPanel} border-r ${colors.border} p-6 overflow-y-auto h-screen z-10 flex flex-col`}>
 
         <div className="flex items-center justify-between mb-8">
@@ -212,6 +232,7 @@ function App() {
           setConfig={setConfig}
           onExport={handleExportConfig}
           onImport={handleImportConfig}
+          onOpenTemplates={() => setShowTemplateModal(true)}
         />
 
         <TableManager

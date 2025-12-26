@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Settings, Upload, Save, Globe, FileJson, FileSpreadsheet, Database } from 'lucide-react';
+import { Settings, Upload, Save, Globe, FileJson, FileSpreadsheet, Database, Layout } from 'lucide-react';
 import { colors } from '../theme';
 import CustomSelect from './ui/CustomSelect';
 import { FlagIcon } from 'react-flag-kit';
@@ -41,7 +41,7 @@ const FORMAT_OPTIONS = [
     { value: "sql", label: "SQL", icon: Database },
 ];
 
-function GlobalConfig({ config, setConfig, onExport, onImport }) {
+function GlobalConfig({ config, setConfig, onExport, onImport, onOpenTemplates }) {
     const fileInputRef = useRef(null);
 
     const handleFileChange = (e) => {
@@ -59,6 +59,15 @@ function GlobalConfig({ config, setConfig, onExport, onImport }) {
                 </h2>
 
                 <div className="flex gap-2">
+                    <button
+                        onClick={onOpenTemplates}
+                        className="text-[10px] bg-blue-900/30 hover:bg-blue-900/50 text-blue-200 px-2 py-1 rounded border border-blue-800/50 flex items-center gap-1 transition"
+                    >
+                        <Layout size={12} /> Templates
+                    </button>
+
+                    <div className="w-px h-6 bg-[#30363d] mx-1"></div>
+
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
                     <button onClick={() => fileInputRef.current.click()} className="text-[10px] bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-2 py-1 rounded border border-[#30363d] flex items-center gap-1 transition">
                         <Upload size={12} /> Import
