@@ -51,5 +51,16 @@ services:
       timeout: 5s
       retries: 5
 
+  target-db:
+    image: postgres:15-alpine
+    container_name: datasynth-target-db
+    restart: always
+    environment:
+      POSTGRES_USER: client
+      POSTGRES_PASSWORD: clientpass
+      POSTGRES_DB: clientdb
+    ports:
+      - "5434:5432"
+
 volumes:
   postgres_data:

@@ -42,3 +42,7 @@ class ProjectSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PushToDbRequest(BaseModel):
+    job_id: str
+    connection_string: str

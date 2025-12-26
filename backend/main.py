@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
-from models import GeneratorRequest, ProjectCreate, ProjectSummary
+from models import GeneratorRequest, ProjectCreate, ProjectSummary, PushToDbRequest
+from db_connector import DatabaseConnector
 from engine import DataEngine
 from exporters import DataExporter
 import uvicorn
@@ -193,6 +194,35 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     db.delete(db_project)
     db.commit()
     return {"status": "success", "message": "Project deleted"}
+
+@app.post("/connectors/test")
+def test_db_connection(payload: dict):
+    conn_str = payload.get("connection_string")
+    try:
+        DatabaseConnector.test_connection(conn_str)
+        return {"status": "success", "message": "Connection established successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/connectors/push")
+async def push_to_database(payload: PushToDbRequest):
+    job = job_manager.get_job(payload.job_id)
+    
+    if not job or job["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Job not found or not completed")
+    
+    
+    raw_data = job["data"]
+    if isinstance(raw_data, dict) and "data" in raw_data:
+        raw_data = raw_data["data"]
+    elif not isinstance(raw_data, dict):
+        raise HTTPException(status_code=400, detail="Cannot push non-JSON job data (CSV/SQL)")
+
+    try:
+        await asyncio.to_thread(DatabaseConnector.push_data, payload.connection_string, raw_data)
+        return {"status": "success", "message": "Data pushed to database successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Push failed: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)

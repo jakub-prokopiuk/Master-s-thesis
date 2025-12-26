@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Download, Copy, Check, FileJson, AlertCircle, Eye, Info } from 'lucide-react';
+import { Download, Copy, Check, FileJson, AlertCircle, Eye, Info, Database } from 'lucide-react';
 import { colors } from '../theme';
 
 const ROW_LIMIT = 100;
 
-function OutputDisplay({ loading, error, generatedData, config, onDownload }) {
+function OutputDisplay({ loading, error, generatedData, config, onDownload, onPushToDb }) {
     const [copied, setCopied] = useState(false);
 
     const getPreviewData = (data) => {
@@ -108,6 +108,15 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload }) {
                     >
                         {copied ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
                     </button>
+
+                    <button
+                        onClick={onPushToDb}
+                        className="flex items-center gap-2 bg-[#238636] hover:bg-[#2ea043] text-white px-4 py-2 rounded text-sm font-bold transition shadow-lg shadow-green-900/20"
+                        title="Push directly to an external database"
+                    >
+                        <Database size={16} /> Push to DB
+                    </button>
+
                     <button
                         onClick={onDownload}
                         className="flex items-center gap-2 bg-[#1f6feb] hover:bg-[#388bfd] text-white px-4 py-2 rounded text-sm font-bold transition shadow-lg shadow-blue-900/20"

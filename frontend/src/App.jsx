@@ -14,6 +14,7 @@ import TemplateModal from './components/modals/TemplateModal';
 import ProjectModal from './components/modals/ProjectModal';
 import SaveModal from './components/modals/SaveModal';
 import GenerationModal from './components/modals/GenerationModal';
+import PushModal from './components/modals/PushModal';
 
 function App() {
   const [loading, setLoading] = useState(false);
@@ -27,7 +28,8 @@ function App() {
     template: false,
     project: false,
     save: false,
-    generation: false
+    generation: false,
+    push: false
   });
 
   const [config, setConfig] = useState({
@@ -217,12 +219,19 @@ function App() {
       {modals.help && <HelpModal onClose={() => toggleModal('help', false)} />}
       {modals.template && <TemplateModal onClose={() => toggleModal('template', false)} onSelect={handleLoadTemplate} />}
       {modals.project && <ProjectModal onClose={() => toggleModal('project', false)} onLoad={handleLoadFromCloud} />}
-
+      
       {modals.generation && (
         <GenerationModal
           jobId={currentJobId}
           onClose={() => toggleModal('generation', false)}
           onComplete={handleJobComplete}
+        />
+      )}
+
+      {modals.push && (
+        <PushModal
+            onClose={() => toggleModal('push', false)}
+            jobId={currentJobId}
         />
       )}
 
@@ -301,6 +310,7 @@ function App() {
         config={config}
         onDownload={downloadFile}
         setError={setError}
+        onPushToDb={() => toggleModal('push', true)}
       />
     </div>
   );
