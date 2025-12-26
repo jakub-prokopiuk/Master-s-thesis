@@ -1,22 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Database, Play, HelpCircle } from 'lucide-react';
 import { colors } from './theme';
-
+import { useSchema } from './hooks/useSchema';
+import Toast from './components/ui/Toast';
 import GlobalConfig from './components/GlobalConfig';
 import SchemaBuilder from './components/schema/SchemaBuilder';
 import FieldList from './components/FieldList';
 import OutputDisplay from './components/OutputDisplay';
-import HelpModal from './components/HelpModal';
-import TemplateModal from './components/TemplateModal';
 import TableManager from './components/TableManager';
+import HelpModal from './components/modals/HelpModal';
+import TemplateModal from './components/modals/TemplateModal';
+import ProjectModal from './components/modals/ProjectModal';
+import SaveModal from './components/modals/SaveModal';
 
 function App() {
   const [loading, setLoading] = useState(false);
-  const [generatedData, setGeneratedData] = useState(null);
   const [error, setError] = useState(null);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showTemplateModal, setShowTemplateModal] = useState(false); // Stan modala szablonów
+  const [notification, setNotification] = useState(null);
+  const [generatedData, setGeneratedData] = useState(null);
+
+  const [modals, setModals] = useState({
+    help: false,
+    template: false,
+    project: false,
+    save: false
+  });
 
   const [config, setConfig] = useState({
     job_name: "E-commerce DB",
@@ -25,7 +34,15 @@ function App() {
     locale: "en_US"
   });
 
-  const [tables, setTables] = useState([
+  const {
+    tables,
+    setTables,
+    activeTableId,
+    setActiveTableId,
+    activeFields,
+    editingIndex,
+    actions
+  } = useSchema([
     {
       id: "t_users",
       name: "users",
@@ -33,60 +50,22 @@ function App() {
       fields: []
     }
   ]);
-  const [activeTableId, setActiveTableId] = useState("t_users");
-  const [editingIndex, setEditingIndex] = useState(null);
 
-  const activeTable = tables.find(t => t.id === activeTableId) || tables[0];
-  const activeFields = activeTable.fields;
-
-  const generateId = () => Math.random().toString(36).substr(2, 9);
-
-  const addTable = () => {
-    const newId = `t_${generateId()}`;
-    const newTable = {
-      id: newId,
-      name: `table_${tables.length + 1}`,
-      rows_count: 10,
-      fields: [
-        { name: "id", type: "faker", is_unique: true, dependencies: [], params: { method: "uuid4" } }
-      ]
-    };
-    setTables([...tables, newTable]);
-    setActiveTableId(newId);
+  const toggleModal = (modalName, isOpen) => {
+    setModals(prev => ({ ...prev, [modalName]: isOpen }));
   };
 
-  const removeTable = (id) => {
-    if (tables.length <= 1) return;
-    const newTables = tables.filter(t => t.id !== id);
-    setTables(newTables);
-    if (activeTableId === id) setActiveTableId(newTables[0].id);
+  const showToast = (type, message) => {
+    setNotification({ type, message });
   };
 
-  const updateTable = (id, updates) => {
-    setTables(tables.map(t => t.id === id ? { ...t, ...updates } : t));
-  };
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
-  const addField = (newField) => {
-    const updatedTable = { ...activeTable, fields: [...activeTable.fields, newField] };
-    updateTable(activeTableId, updatedTable);
-  };
-
-  const updateField = (updatedField) => {
-    const newFields = [...activeTable.fields];
-    newFields[editingIndex] = updatedField;
-    updateTable(activeTableId, { fields: newFields });
-    setEditingIndex(null);
-  };
-
-  const removeField = (index) => {
-    const newFields = [...activeTable.fields];
-    newFields.splice(index, 1);
-    updateTable(activeTableId, { fields: newFields });
-    if (editingIndex === index) setEditingIndex(null);
-  };
-
-  const startEditing = (index) => setEditingIndex(index);
-  const cancelEditing = () => setEditingIndex(null);
 
   const handleLoadTemplate = (template) => {
     setConfig({ ...config, ...template.config });
@@ -96,15 +75,65 @@ function App() {
     }
     setGeneratedData(null);
     setError(null);
-    setShowTemplateModal(false);
+    toggleModal('template', false);
+    showToast('success', `Template "${template.name}" loaded successfully.`);
+  };
+
+  const executeSaveToCloud = async (saveName) => {
+    if (!saveName.trim()) {
+      showToast('error', "Project name cannot be empty.");
+      return;
+    }
+
+    const payload = {
+      name: saveName,
+      description: config.global_context,
+      schema_data: {
+        config: { ...config, job_name: saveName },
+        tables: tables
+      }
+    };
+
+    try {
+      await axios.post('http://localhost:8000/projects', payload);
+      setConfig(prev => ({ ...prev, job_name: saveName }));
+      toggleModal('save', false);
+      showToast('success', "Project saved to database successfully!");
+    } catch (e) {
+      console.error(e);
+      showToast('error', "Error saving project: " + (e.response?.data?.detail || e.message));
+    }
+  };
+
+  const handleLoadFromCloud = async (projectId) => {
+    try {
+      setLoading(true);
+      const res = await axios.get(`http://localhost:8000/projects/${projectId}`);
+      const data = res.data;
+
+      if (data.config && Array.isArray(data.tables)) {
+        setConfig(data.config);
+        setTables(data.tables);
+        if (data.tables.length > 0) {
+          setActiveTableId(data.tables[0].id);
+        }
+        setError(null);
+        setGeneratedData(null);
+        toggleModal('project', false);
+        showToast('success', "Project loaded successfully!");
+      } else {
+        showToast('error', "Invalid project data format.");
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('error', "Error loading project: " + (e.response?.data?.detail || e.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExportConfig = () => {
-    const projectData = {
-      config: config,
-      tables: tables,
-      version: "2.0"
-    };
+    const projectData = { config, tables, version: "2.0" };
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -112,6 +141,7 @@ function App() {
     a.download = `${config.job_name.replace(/\s+/g, '_').toLowerCase()}_schema.json`;
     a.click();
     URL.revokeObjectURL(url);
+    showToast('success', "Configuration exported to file.");
   };
 
   const handleImportConfig = (file) => {
@@ -124,11 +154,12 @@ function App() {
           setTables(importedData.tables);
           setActiveTableId(importedData.tables[0].id);
           setError(null);
+          showToast('success', "Configuration imported successfully.");
         } else {
-          setError("Invalid v2 schema format. Missing 'tables'.");
+          showToast('error', "Invalid v2 schema format. Missing 'tables'.");
         }
       } catch (err) {
-        setError("Failed to parse JSON file: " + err.message);
+        showToast('error', "Failed to parse JSON file: " + err.message);
       }
     };
     reader.readAsText(file);
@@ -153,6 +184,7 @@ function App() {
       if (config.output_format === 'json') {
         const response = await axios.post('http://127.0.0.1:8000/generate', payload);
         setGeneratedData(response.data);
+        showToast('success', "Data generated successfully!");
       } else {
         const response = await axios.post('http://127.0.0.1:8000/generate', payload, {
           responseType: 'blob'
@@ -166,19 +198,22 @@ function App() {
         link.click();
         link.remove();
         setLoading(false);
+        showToast('success', "File generated and downloaded!");
       }
     } catch (err) {
+      let errorMessage = "Unknown error generating file";
       if (err.response && err.response.data instanceof Blob) {
         const text = await err.response.data.text();
         try {
           const jsonError = JSON.parse(text);
-          setError(jsonError.detail || "Error generating file");
+          errorMessage = jsonError.detail || errorMessage;
         } catch (e) {
-          setError("Unknown error generating file");
         }
-      } else {
-        setError(err.message + (err.response ? ": " + JSON.stringify(err.response.data) : ""));
+      } else if (err.message) {
+        errorMessage = err.message + (err.response ? ": " + JSON.stringify(err.response.data) : "");
       }
+      setError(errorMessage);
+      showToast('error', "Generation failed. Check output console.");
     } finally {
       setLoading(false);
     }
@@ -197,17 +232,20 @@ function App() {
   return (
     <div className={`min-h-screen ${colors.bgMain} ${colors.textMain} font-sans flex flex-col md:flex-row selection:bg-blue-500 selection:text-white relative`}>
 
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {notification && <Toast type={notification.type} message={notification.message} />}
 
-      {showTemplateModal && (
-        <TemplateModal
-          onClose={() => setShowTemplateModal(false)}
-          onSelect={handleLoadTemplate}
+      {modals.save && (
+        <SaveModal
+          onClose={() => toggleModal('save', false)}
+          onSave={executeSaveToCloud}
+          initialName={config.job_name}
         />
       )}
+      {modals.help && <HelpModal onClose={() => toggleModal('help', false)} />}
+      {modals.template && <TemplateModal onClose={() => toggleModal('template', false)} onSelect={handleLoadTemplate} />}
+      {modals.project && <ProjectModal onClose={() => toggleModal('project', false)} onLoad={handleLoadFromCloud} />}
 
       <div className={`w-full md:w-5/12 lg:w-4/12 ${colors.bgPanel} border-r ${colors.border} p-6 overflow-y-auto h-screen z-10 flex flex-col`}>
-
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-md">
@@ -219,7 +257,7 @@ function App() {
             </div>
           </div>
           <button
-            onClick={() => setShowHelp(true)}
+            onClick={() => toggleModal('help', true)}
             className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition"
             title="Open Tutorial & Guide"
           >
@@ -232,22 +270,24 @@ function App() {
           setConfig={setConfig}
           onExport={handleExportConfig}
           onImport={handleImportConfig}
-          onOpenTemplates={() => setShowTemplateModal(true)}
+          onOpenTemplates={() => toggleModal('template', true)}
+          onSaveCloud={() => toggleModal('save', true)}
+          onOpenProjects={() => toggleModal('project', true)}
         />
 
         <TableManager
           tables={tables}
           activeTableId={activeTableId}
-          onAddTable={addTable}
-          onRemoveTable={removeTable}
+          onAddTable={actions.addTable}
+          onRemoveTable={actions.removeTable}
           onSelectTable={setActiveTableId}
-          onUpdateTable={updateTable}
+          onUpdateTable={actions.updateTable}
         />
 
         <SchemaBuilder
-          onAddField={addField}
-          onUpdateField={updateField}
-          onCancelEdit={cancelEditing}
+          onAddField={actions.addField}
+          onUpdateField={actions.updateField}
+          onCancelEdit={actions.cancelEditing}
           existingFields={activeFields}
           fieldToEdit={editingIndex !== null ? activeFields[editingIndex] : null}
           tables={tables}
@@ -256,8 +296,8 @@ function App() {
 
         <FieldList
           fields={activeFields}
-          onRemoveField={removeField}
-          onEditField={startEditing}
+          onRemoveField={actions.removeField}
+          onEditField={actions.startEditing}
           editingIndex={editingIndex}
         />
 

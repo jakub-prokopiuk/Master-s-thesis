@@ -67,7 +67,7 @@ export const TEMPLATES = [
             job_name: "Corporate HR",
             global_context: "A large tech corporation.",
             locale: "en_US",
-            output_format: "csv"
+            output_format: "json"
         },
         tables: [
             {

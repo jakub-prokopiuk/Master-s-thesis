@@ -1,6 +1,6 @@
 import { X, Layout, ShoppingCart, Briefcase, Activity, ArrowRight } from 'lucide-react';
-import { colors } from '../theme';
-import { TEMPLATES } from '../data/templates';
+import { colors } from '../../theme';
+import { TEMPLATES } from '../../data/templates';
 
 const ICON_MAP = {
     "ShoppingCart": ShoppingCart,

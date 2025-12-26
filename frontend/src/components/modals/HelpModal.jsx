@@ -1,5 +1,5 @@
 import { X, BookOpen, Wand2, Thermometer, Layers, Zap, Brain, Sliders } from 'lucide-react';
-import { colors } from '../theme';
+import { colors } from '../../theme';
 
 function HelpModal({ onClose }) {
     return (

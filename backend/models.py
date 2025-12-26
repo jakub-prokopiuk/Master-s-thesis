@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
+from datetime import datetime
 
 FieldType = Literal["faker", "llm", "distribution", "foreign_key", "integer", "boolean", "regex", "timestamp", "template"]
 
@@ -25,3 +26,18 @@ class GeneratorConfig(BaseModel):
 class GeneratorRequest(BaseModel):
     config: GeneratorConfig
     tables: List[TableSchema]
+
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    schema_data: GeneratorRequest
+
+class ProjectSummary(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
