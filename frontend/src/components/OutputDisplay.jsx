@@ -1,37 +1,42 @@
-import { useState } from 'react';
-import { Download, Copy, Check, FileJson, AlertCircle, Eye, Info, Database } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, Copy, Check, FileJson, AlertCircle, Info, Database, Table as TableIcon, Code } from 'lucide-react';
 import { colors } from '../theme';
 
 const ROW_LIMIT = 100;
 
 function OutputDisplay({ loading, error, generatedData, config, onDownload, onPushToDb }) {
     const [copied, setCopied] = useState(false);
+    const [activeTable, setActiveTable] = useState(null);
+    const [viewMode, setViewMode] = useState('table');
 
-    const getPreviewData = (data) => {
-        if (!data) return null;
+    const rawData = generatedData?.data || generatedData;
 
-        const preview = {};
-        let wasTruncated = false;
+    const isStructuredData = rawData && typeof rawData === 'object' && !Array.isArray(rawData);
 
-        Object.keys(data).forEach(tableName => {
-            const rows = data[tableName];
-            if (Array.isArray(rows) && rows.length > ROW_LIMIT) {
-                preview[tableName] = rows.slice(0, ROW_LIMIT);
-                wasTruncated = true;
-            } else {
-                preview[tableName] = rows;
-            }
-        });
+    const tableNames = isStructuredData ? Object.keys(rawData) : [];
 
-        return { preview, wasTruncated };
-    };
+    useEffect(() => {
+        if (tableNames.length > 0) {
+            setActiveTable(tableNames[0]);
+        }
+    }, [generatedData]);
 
     const handleCopy = () => {
         if (!generatedData) return;
-        const { preview } = getPreviewData(generatedData);
-        navigator.clipboard.writeText(JSON.stringify(preview, null, 2));
+        const textToCopy = viewMode === 'table' && activeTable
+            ? JSON.stringify(rawData[activeTable], null, 2)
+            : JSON.stringify(rawData, null, 2);
+
+        navigator.clipboard.writeText(textToCopy);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    const renderCell = (value) => {
+        if (value === null || value === undefined) return <span className="text-gray-600 italic">null</span>;
+        if (typeof value === 'boolean') return <span className={value ? "text-green-400" : "text-red-400"}>{String(value)}</span>;
+        if (typeof value === 'object') return JSON.stringify(value);
+        return String(value);
     };
 
     if (loading) {
@@ -78,9 +83,10 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload, onPu
         );
     }
 
-    const { preview, wasTruncated } = getPreviewData(generatedData.data || generatedData);
-
-    const jsonString = JSON.stringify(preview, null, 2);
+    const currentRows = (isStructuredData && activeTable) ? rawData[activeTable] : [];
+    const previewRows = currentRows.slice(0, ROW_LIMIT);
+    const headers = previewRows.length > 0 ? Object.keys(previewRows[0]) : [];
+    const wasTruncated = currentRows.length > ROW_LIMIT;
     const totalRows = generatedData.total_rows || "Unknown";
 
     return (
@@ -101,10 +107,25 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload, onPu
                 </div>
 
                 <div className="flex gap-2">
+                    <div className="flex bg-[#21262d] rounded-lg p-0.5 border border-[#30363d] mr-2">
+                        <button
+                            onClick={() => setViewMode('table')}
+                            className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition ${viewMode === 'table' ? 'bg-[#30363d] text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}
+                        >
+                            <TableIcon size={14} /> Table
+                        </button>
+                        <button
+                            onClick={() => setViewMode('json')}
+                            className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition ${viewMode === 'json' ? 'bg-[#30363d] text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}
+                        >
+                            <Code size={14} /> JSON
+                        </button>
+                    </div>
+
                     <button
                         onClick={handleCopy}
                         className="p-2 text-gray-400 hover:text-white hover:bg-[#30363d] rounded transition"
-                        title="Copy Preview to Clipboard"
+                        title="Copy to Clipboard"
                     >
                         {copied ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
                     </button>
@@ -121,35 +142,82 @@ function OutputDisplay({ loading, error, generatedData, config, onDownload, onPu
                         onClick={onDownload}
                         className="flex items-center gap-2 bg-[#1f6feb] hover:bg-[#388bfd] text-white px-4 py-2 rounded text-sm font-bold transition shadow-lg shadow-blue-900/20"
                     >
-                        <Download size={16} /> Download Full File
+                        <Download size={16} /> Download
                     </button>
                 </div>
             </div>
 
+            {isStructuredData && tableNames.length > 0 && viewMode === 'table' && (
+                <div className="flex items-center gap-1 px-6 pt-4 border-b border-[#30363d] overflow-x-auto no-scrollbar">
+                    {tableNames.map(name => (
+                        <button
+                            key={name}
+                            onClick={() => setActiveTable(name)}
+                            className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap
+                                ${activeTable === name
+                                    ? 'border-blue-500 text-blue-400'
+                                    : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-700'
+                                }`}
+                        >
+                            {name} <span className="ml-1 opacity-50 text-[10px]">({rawData[name]?.length})</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {wasTruncated && (
-                <div className="bg-blue-900/20 border-b border-blue-900/50 px-6 py-3 flex items-center gap-3">
-                    <Info size={18} className="text-blue-400 flex-none" />
-                    <p className="text-xs text-blue-200">
-                        <span className="font-bold">Preview Truncated:</span> Showing only the first {ROW_LIMIT} rows per table for performance.
-                        The downloaded file will contain the full dataset.
+                <div className="bg-blue-900/10 border-b border-blue-900/30 px-6 py-2 flex items-center gap-3">
+                    <Info size={14} className="text-blue-400 flex-none" />
+                    <p className="text-[11px] text-blue-300">
+                        Preview truncated to first {ROW_LIMIT} rows. Download to see full data.
                     </p>
                 </div>
             )}
 
-            <div className="flex-1 overflow-auto p-6 relative group">
-                <div className="absolute top-4 right-4 bg-[#0d1117]/80 backdrop-blur px-2 py-1 rounded text-[10px] text-gray-500 border border-[#30363d] pointer-events-none">
-                    PREVIEW MODE
-                </div>
+            <div className="flex-1 overflow-auto bg-[#0d1117] relative p-6">
 
-                <pre className="font-mono text-xs leading-relaxed text-gray-300">
-                    <code className="language-json">
-                        {jsonString}
-                    </code>
-                </pre>
-
-                {wasTruncated && (
-                    <div className="mt-4 text-center text-gray-500 text-xs italic border-t border-[#30363d] pt-4">
-                        ... remaining data hidden in preview ...
+                {viewMode === 'table' && isStructuredData ? (
+                    previewRows.length > 0 ? (
+                        <div className="rounded-lg border border-[#30363d] overflow-hidden">
+                            <table className="w-full text-left border-separate border-spacing-0">
+                                <thead className="bg-[#161b22]">
+                                    <tr>
+                                        <th className="px-4 py-3 border-b border-r border-[#30363d] text-[10px] uppercase font-bold text-gray-400 w-12 text-center rounded-tl-lg">#</th>
+                                        {headers.map((header, i) => (
+                                            <th key={header} className={`px-4 py-3 border-b border-[#30363d] text-[10px] uppercase font-bold text-gray-400 whitespace-nowrap ${i === headers.length - 1 ? 'rounded-tr-lg' : 'border-r'}`}>
+                                                {header}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#21262d]">
+                                    {previewRows.map((row, idx) => (
+                                        <tr key={idx} className="hover:bg-[#161b22] transition-colors group">
+                                            <td className="px-4 py-2 border-r border-[#30363d] text-[10px] font-mono text-gray-600 text-center select-none bg-[#0d1117] group-hover:bg-[#161b22]">
+                                                {idx + 1}
+                                            </td>
+                                            {headers.map((header, i) => (
+                                                <td key={header} className={`px-4 py-2 text-xs font-mono text-gray-300 whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis ${i === headers.length - 1 ? '' : 'border-r border-[#30363d]'}`}>
+                                                    {renderCell(row[header])}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                            <p>No data in this table.</p>
+                        </div>
+                    )
+                ) : (
+                    <div className="rounded-lg border border-[#30363d] p-4 bg-[#0d1117] overflow-auto">
+                        <pre className="font-mono text-xs leading-relaxed text-gray-300">
+                            <code className="language-json">
+                                {JSON.stringify(rawData, null, 2)}
+                            </code>
+                        </pre>
                     </div>
                 )}
             </div>
