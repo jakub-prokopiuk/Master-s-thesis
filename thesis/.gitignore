@@ -1,0 +1,55 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.fmt
+*.fot
+*.cb
+*.cb2
+*.lb
+*.lof
+*.lot
+*.out
+*.toc
+*.dvi
+*.ps
+*.eps
+*.synctex.gz
+*.synctex(busy)
+*.pdfsync
+*.log
+*.bcf
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.ist
+*.slg
+*.app
+*.run.xml
+*.slo
+*.bbl
+*.fdb_latexmk
+*.fls
+
+# BibTeX
+*.bib.bak
+
+# Intermediate files
+*.4ct
+*.4tc
+*.idv
+*.lg
+*.tmp
+*.xref
+
+# Compilation directories
+_minted-*/
+.latexmk/
+
+# macOS
+.DS_Store
