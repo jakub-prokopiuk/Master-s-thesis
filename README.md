@@ -1,6 +1,6 @@
-# DataSynth.ai
+# DataSynth.io
 
-**DataSynth.ai** is a powerful, full-stack application designed to generate complex, relational synthetic datasets using a combination of standard algorithms (Faker) and Large Language Models.
+**DataSynth.io** is a powerful, full-stack application designed to generate complex, relational synthetic datasets using a combination of standard algorithms (Faker) and Large Language Models.
 
 It solves the problem of creating realistic test data that requires context-awareness, creativity, and relational integrity across multiple tables.
 

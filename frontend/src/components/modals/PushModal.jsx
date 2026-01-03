@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import api from '../../lib/api';
-import { Database, X, Check, AlertTriangle, UploadCloud, Loader2 } from 'lucide-react';
+import { Database, X, Check, AlertTriangle, UploadCloud, Loader2, Info } from 'lucide-react';
 import { colors } from '../../theme';
 
 function PushModal({ onClose, jobId }) {
@@ -13,8 +13,8 @@ function PushModal({ onClose, jobId }) {
         setMessage(null);
         try {
             await api.post('/connectors/test', { connection_string: connString });
-            setStatus("idle");
-            alert("Connection successful!");
+            setStatus("test_success");
+            setMessage("Connection established successfully!");
         } catch (err) {
             setStatus("error");
             setMessage("Connection failed: " + (err.response?.data?.detail || err.message));
@@ -67,19 +67,41 @@ function PushModal({ onClose, jobId }) {
                                     <input
                                         type="text"
                                         value={connString}
-                                        onChange={(e) => setConnString(e.target.value)}
+                                        onChange={(e) => {
+                                            setConnString(e.target.value);
+                                            if (status === "test_success" || status === "error") {
+                                                setStatus("idle");
+                                                setMessage(null);
+                                            }
+                                        }}
                                         className={`w-full pl-9 p-2.5 rounded-md bg-[#010409] border ${colors.border} text-sm text-white focus:border-blue-500 outline-none font-mono`}
+                                        placeholder="postgresql://user:pass@localhost:5432/db"
                                     />
                                 </div>
-                                <p className="text-[10px] text-gray-500 mt-2">
-                                    Supported: PostgreSQL, MySQL, SQLite, Oracle, MSSQL. <br />
-                                    Example: <code>postgresql://user:pass@host:5432/db</code>
-                                </p>
+
+                                <div className="mt-3 p-3 bg-[#161b22] rounded border border-[#30363d] text-[10px] text-gray-400 space-y-1 font-mono">
+                                    <div className="flex items-center gap-2 text-blue-400 font-sans font-bold mb-1">
+                                        <Info size={12} /> Supported Formats:
+                                    </div>
+                                    <div className="grid grid-cols-[80px_1fr] gap-x-2">
+                                        <span className="text-gray-500">PostgreSQL:</span> <span className="text-gray-300">postgresql://user:pass@host:5432/db</span>
+                                        <span className="text-gray-500">MySQL:</span>      <span className="text-gray-300">mysql+pymysql://user:pass@host:3306/db</span>
+                                        <span className="text-gray-500">MSSQL:</span>      <span className="text-gray-300">mssql+pymssql://user:pass@host:1433/db</span>
+                                        <span className="text-gray-500">Oracle:</span>     <span className="text-gray-300">oracle+oracledb://user:pass@host:1521/service_name</span>
+                                    </div>
+                                </div>
                             </div>
 
                             {message && status === "error" && (
-                                <div className="p-3 bg-red-900/20 border border-red-900/50 rounded flex items-start gap-2 text-red-300 text-xs">
+                                <div className="p-3 bg-red-900/20 border border-red-900/50 rounded flex items-start gap-2 text-red-300 text-xs animate-in fade-in slide-in-from-top-1">
                                     <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                    {message}
+                                </div>
+                            )}
+
+                            {message && status === "test_success" && (
+                                <div className="p-3 bg-green-900/20 border border-green-900/50 rounded flex items-start gap-2 text-green-300 text-xs animate-in fade-in slide-in-from-top-1">
+                                    <Check size={16} className="shrink-0 mt-0.5" />
                                     {message}
                                 </div>
                             )}
@@ -87,14 +109,15 @@ function PushModal({ onClose, jobId }) {
                             <div className="flex gap-3 pt-2">
                                 <button
                                     onClick={handleTest}
-                                    disabled={status === "pushing"}
-                                    className="flex-1 py-2.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-gray-300 text-sm font-medium transition"
+                                    disabled={status === "pushing" || status === "testing"}
+                                    className="flex-1 py-2.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-gray-300 text-sm font-medium transition flex justify-center items-center gap-2"
                                 >
+                                    {status === "testing" && <Loader2 size={14} className="animate-spin" />}
                                     Test Connection
                                 </button>
                                 <button
                                     onClick={handlePush}
-                                    disabled={status === "pushing"}
+                                    disabled={status === "pushing" || status === "testing"}
                                     className="flex-1 py-2.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
                                 >
                                     {status === "pushing" ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
