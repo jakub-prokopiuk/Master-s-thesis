@@ -108,3 +108,9 @@ Once generation is complete, you can:
 - The application supports saving and loading schema definitions as JSON files for reuse.
 - After creating a schema, click "Save" to download the JSON file.
 - To load a schema, use the "Import" button and select a previously saved JSON file.
+
+6. Testing
+- Backend tests are written using `pytest`. To run the tests, in the main directory, execute:
+```bash
+docker compose exec backend pytest -v
+```

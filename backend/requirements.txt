@@ -38,3 +38,6 @@ bcrypt==4.0.1
 pymysql
 pymssql
 oracledb
+pytest
+httpx
+pytest-asyncio
